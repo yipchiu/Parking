@@ -1,0 +1,1095 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+Sys.setlocale("LC_TIME", "English")
+```
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+#import required packages
+library(ggmap)
+library(ggplot2)
+library(gridExtra)
+library(Hmisc)
+library(tidycensus)
+library(tmap)
+library(tmaptools)
+library(maps)
+library(mapdata)
+library(maptools)
+library(ggthemes)
+library(censusapi)
+library(mapview)
+library(sf)
+library(tidyverse)
+library(stringr)
+library(leaflet)
+library(mapproj)
+library(zipcode)
+library(dplyr)
+library(waffle)
+library(extrafont)
+library(emojifont)
+library(devtools)
+library(stringi)
+library(ggTimeSeries)
+library(scales)
+```
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+### 1-1 Import the dataset and extract the data of 2016,2017,2018
+# Replace "./project.csv" with your path to the dataset downloaded from https://canvas.ucdavis.edu/courses/291146/files/5215467/download?wrap=1
+
+# It may take 8-10 minutes to finish this part
+```
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+#------------------------------------------------------------#
+# Dataset   ------ the total dataset of 3 years
+# begin/end ------ the time marks used to extract 2018 data
+# Data_2016 ------ the data of 2016
+# Data_2017 ------ the data of 2017
+# Data_2018 ------ the data of 2018
+#------------------------------------------------------------#
+# import data
+# replace "./project.csv" with your path to the downloaded data
+ Dataset <-  read.csv("./project.csv", sep=",", header=TRUE) 
+
+# Extracting 2016,2017,2018 data:
+Yeardata <- function(Dataset,begin,end){
+  date <- as.character(Dataset$issue_date)
+  date1 <- strptime(date, "%Y-%m-%d %H:%M:%S")
+  begin <- strptime(begin, "%Y-%m-%d %H:%M:%S")
+  end <- strptime(end, "%Y-%m-%d %H:%M:%S")
+  return (subset(Dataset, date1>=begin & date1<=end))
+}
+Data_2016 <- Yeardata(Dataset,'2016-01-01 00:00:00','2016-12-31 23:59:59' )
+Data_2017 <- Yeardata(Dataset,'2017-01-01 00:00:00','2017-12-31 23:59:59' )
+Data_2018 <- Yeardata(Dataset,'2018-01-01 00:00:00','2018-04-30 23:59:59' )
+
+```
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+### 1-2 Extract the records where one licence plate gets tickets more than one time
+# Used function: Multi_vio_fun()
+# It may take 10-15 minutes to finish this part
+```
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+#------------------------------------------------------------#
+# Multi_violation        ------ the ticket data where the same license plate violates more than one time
+# Multi_violation_2016   ------ the ticket data where the same license plate violates more than one time in 2016
+# Multi_violation_2017   ------ the ticket data where the same license plate violates more than one time in 2017
+# Multi_violation_2018   ------ the ticket data where the same license plate violates more than one time in 2018
+#------------------------------------------------------------#
+Multi_vio_fun <- function(Dataset){
+  try1 <- sort(as.character(Dataset$license_plate_number), decreasing = FALSE)
+  try2 <- Dataset[order(as.character(Dataset$license_plate_number)),]
+  t1 <- which(duplicated(try1)==TRUE)
+  t2 <- (t1-1)
+  t3 <- sort(c(t1,t2),decreasing = FALSE)
+  rownum <- t3[-which(duplicated(t3)==TRUE)]
+  return (try2[rownum,])
+  
+}
+Multi_violation <- Multi_vio_fun(Dataset)
+Multi_violation_2016 <- Multi_vio_fun(Data_2016)
+Multi_violation_2017 <- Multi_vio_fun(Data_2017)
+Multi_violation_2018 <- Multi_vio_fun(Data_2018)
+```
+
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+### *2-1* Quantitative Analysis By Year
+#------------------------------------------------------------#
+# Count_ticket_by_month_YEAR        ------ Ticket counts of each month in YEAR(2016/2017/2018)
+# Sum_fine_by_month_YEAR            ------ Total fine amounts of each month in YEAR(2016/2017/2018)
+#------------------------------------------------------------#
+# Ticket counts
+Count_ticket_by_month <- function (Dataset){
+  a <- Dataset
+  a$Month <- format(as.Date(a$issue_date), "%m")
+  a$Month <- as.factor(a$Month)
+  
+  b <- as.data.frame(table(a$Month))
+  return(b)
+}
+
+Count_ticket_by_month_2016 <- Count_ticket_by_month(Data_2016)
+Count_ticket_by_month_2017 <- Count_ticket_by_month(Data_2017)
+Count_ticket_by_month_2018 <- Count_ticket_by_month(Data_2018)
+
+names(Count_ticket_by_month_2016) <- c("month", "ticket count")
+names(Count_ticket_by_month_2017) <- c("month", "ticket count")
+names(Count_ticket_by_month_2018) <- c("month", "ticket count")
+
+m1 <- c("Jan","Feb","Mar","Apr","May","June","July","Aug","Sep","Oct","Nov","Dec")
+m2 <- c("Jan","Feb","Mar","Apr")
+m1 <- as.data.frame(m1)
+m2 <- as.data.frame(m2)
+
+Count_ticket_by_month_2016 <- cbind(m1, Count_ticket_by_month_2016)
+Count_ticket_by_month_2017 <- cbind(m1, Count_ticket_by_month_2017)
+Count_ticket_by_month_2018 <- cbind(m2, Count_ticket_by_month_2018)
+
+Count_ticket_by_month_2016$m1 <- as.factor(Count_ticket_by_month_2016$m1)
+Count_ticket_by_month_2017$m1 <- as.factor(Count_ticket_by_month_2017$m1)
+Count_ticket_by_month_2018$m2 <- as.factor(Count_ticket_by_month_2018$m2)
+Count_ticket_by_month_2018 <- Count_ticket_by_month_2018[-5,]
+
+Count_ticket_by_month_2016$m1 = factor(Count_ticket_by_month_2016$m1, levels = c("Jan","Feb","Mar","Apr","May","June","July","Aug","Sep","Oct","Nov","Dec"))
+
+Count_ticket_by_month_2017$m1 = factor(Count_ticket_by_month_2017$m1, levels = c("Jan","Feb","Mar","Apr","May","June","July","Aug","Sep","Oct","Nov","Dec"))
+
+Count_ticket_by_month_2018$m2 = factor(Count_ticket_by_month_2018$m2, levels = c("Jan","Feb","Mar","Apr"))
+names(Count_ticket_by_month_2018) <- c('m1','month','ticket count')
+Count_ticket_by_month_2016$year <- '2016'
+Count_ticket_by_month_2017$year <- '2017'
+Count_ticket_by_month_2018$year <- '2018'
+Count_ticket_by_month_year <- rbind(Count_ticket_by_month_2016,Count_ticket_by_month_2017,Count_ticket_by_month_2018)
+
+# Fine amounts
+Sum_fine_by_month <- function (Dataset){
+  a <- Dataset
+  a$Month <- format(as.Date(a$issue_date), "%m")
+  a$Month <- as.factor(a$Month)
+  b <- as.data.frame(tapply((a$current_amount_due+a$total_payments), a$Month, sum))
+  return(b)
+}
+m1 <- c("Jan","Feb","Mar","Apr","May","June","July","Aug","Sep","Oct","Nov","Dec")
+m2 <- c("Jan","Feb","Mar","Apr")
+m1 <- as.data.frame(m1)
+m2 <- as.data.frame(m2)
+
+Sum_fine_by_month_2018 <- Sum_fine_by_month(Data_2018)
+Sum_fine_by_month_2017 <- Sum_fine_by_month(Data_2017)
+Sum_fine_by_month_2016 <- Sum_fine_by_month(Data_2016)
+
+Sum_fine_by_month_2018 <- cbind(m2, Sum_fine_by_month_2018)
+Sum_fine_by_month_2017 <- cbind(m1, Sum_fine_by_month_2017)
+Sum_fine_by_month_2016 <- cbind(m1, Sum_fine_by_month_2016)
+
+names(Sum_fine_by_month_2018) <- c("month", "totalfine")
+names(Sum_fine_by_month_2017) <- c("month", "totalfine")
+names(Sum_fine_by_month_2016) <- c("month", "totalfine")
+
+
+Sum_fine_by_month_2018$month <- as.factor(Sum_fine_by_month_2018$month)
+Sum_fine_by_month_2018 <- Sum_fine_by_month_2018[-5,]
+Sum_fine_by_month_2017$month <- as.factor(Sum_fine_by_month_2017$month)
+Sum_fine_by_month_2016$month <- as.factor(Sum_fine_by_month_2016$month)
+
+
+Sum_fine_by_month_2016$month = factor(Sum_fine_by_month_2016$month, levels = c("Jan","Feb","Mar","Apr","May","June","July","Aug","Sep","Oct","Nov","Dec"))
+Sum_fine_by_month_2016$year = '2016'
+Sum_fine_by_month_2017$year = '2017'
+Sum_fine_by_month_2018$year = '2018'
+Sum_fine_by_month_year = rbind(Sum_fine_by_month_2016,Sum_fine_by_month_2017,Sum_fine_by_month_2018)
+
+
+names(Count_ticket_by_month_year) <- c('month','month1','ticket_counts','year')
+Fine_amount_2016 <- sum(Sum_fine_by_month_2016$totalfine)
+Fine_amount_2017 <- sum(Sum_fine_by_month_2017$totalfine)
+Ticket_count_2016 <- nrow(Data_2016)
+Ticket_count_2017 <- nrow(Data_2017)
+Amount_matrix <- as.data.frame(c(Fine_amount_2016,Fine_amount_2017))
+Amount_matrix$year <- c('2016','2017') 
+names(Amount_matrix) <- c('number','year')
+P_Count_by_year <- ggplot(Amount_matrix,aes(year,number/1000000))+
+geom_bar(stat="identity",position=position_dodge())+
+ggtitle("Fine Amounts by Year(M$)")+
+theme(axis.title = element_blank())+
+  geom_text(aes(label=round(number/1000000,3)), vjust=-0.3, size=3.5)+
+  labs(x= "year",y = "Fine Amounts/M$")
+Count_matrix <- as.data.frame(c(Ticket_count_2016 ,Ticket_count_2017 ))
+Count_matrix$year <- c('2016','2017')
+names(Count_matrix) <- c('number','year')
+P_fine_by_year <- ggplot(Count_matrix,aes(year,number))+
+geom_bar(stat="identity",position=position_dodge())+
+ggtitle("Ticket Counts by Year")+
+theme(axis.title = element_blank())+
+  geom_text(aes(label=number), vjust=-0.3, size=3.5)+
+  labs(x= "year",y = "Ticket Counts")
+
+# Average ticket fine
+Avg_amount_2016 <- (sum(Sum_fine_by_month_2016$totalfine))/nrow(Data_2016)
+Avg_amount_2017 <- (sum(Sum_fine_by_month_2017$totalfine))/nrow(Data_2017)
+Avg_amount_2018 <- (sum(Sum_fine_by_month_2018$totalfine))/nrow(Data_2018)
+
+Avg <- as.data.frame(c(Avg_amount_2016,Avg_amount_2017,Avg_amount_2018))
+y <- as.data.frame(c("2016","2017","2018"))
+Avg <- cbind(y, Avg)
+names(Avg) <- c("year","average fine amount")
+Avg$year <- as.factor(Avg$year)
+
+P_avg_fine <- ggplot(Avg, aes(x = year , y=Avg$'average fine amount'))+
+  geom_col(width = 0.5)+
+  labs(x= "year",y = "Average fine amount/dollar")+
+  labs(title = "Average fine amount per ticket")+
+  geom_text(aes(label=round(Avg$`average fine amount`,2)), vjust=-0.3, size=3.5)
+
+ 
+
+```
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+### *2-2* Quantitative Analysis By Month
+P_count_by_month <- 
+  ggplot(Count_ticket_by_month_year,aes(month,ticket_counts,color = year ))+
+geom_line(aes(month,ticket_counts,group = year ))+theme(axis.ticks.length=unit(0.5,'cm'))+
+guides(fill=guide_legend(title=NULL))+
+ggtitle("Ticket Counts by Month")+
+theme(axis.title = element_blank())+
+  labs(x= "month",y = "Ticket Counts")
+
+
+P_fine_by_month <- ggplot(Sum_fine_by_month_year,aes(month,totalfine/1000000,color = year ))+
+geom_line(aes(month,totalfine/1000000,group = year ))+theme(axis.ticks.length=unit(0.5,'cm'))+
+guides(fill=guide_legend(title=NULL))+
+ggtitle("Fine Amounts by Month(M$)")+
+theme(axis.title = element_blank())+
+  labs(x= "monthr",y = "Fine Amounts/M$")
+
+
+```   
+
+
+
+```{r warning=FALSE, message=FALSE,echo = FALSE}
+### *2-3* Quantitative Analysis By Weekday
+#### Register the google map api
+register_google(key="AIzaSyBGu7aakc8vy@@@@@@@@@@gQ5Cpi2E4")
+```
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+#### Import the geocode data of 66000 random samples of 2018 data
+# You need to import 'Sample_2018.csv' and 'geo_2018.csv' from your path
+# These two documents are in the folder
+```
+
+```{r warning=FALSE, message=FALSE, echo=FALSE }
+#------------------------------------------------------------#
+# Sample_2018   ------ 66000 samples randomly selected from 2018 data
+# Geo_2018      ------ geocodes of the Sample_2018
+#------------------------------------------------------------#
+# Take 66,000 samples randomly for geocoding
+# Sample_2018 <- sample_n(Data_2018,66000)
+# write.csv(Sample_2018,'Sample_2018.csv')
+# get the geocoded data from local python script
+Sample_2018 <- read.csv("./Sample_2018.csv", sep=",", header=TRUE)
+Geo_2018 <- read.csv("./geo_2018.csv", sep=",", header=TRUE)
+# Attach the geocodes data to Sample_2018
+Sample_2018$lon <- Geo_2018$longitude
+Sample_2018$lat <- Geo_2018$latitude
+Sample_2018$shortcode <- Geo_2018$postcode
+Sample_2018$day<- weekdays(as.Date(Sample_2018$issue_date))
+# Plot the distribution map
+ChicagoMap_zoom14 <- ggmap(get_map(location = "chicago",maptype ='roadmap', zoom = 14))
+ChicagoMap_zoom13 <- ggmap(get_map(location = "chicago",maptype ='roadmap', zoom = 13))
+ChicagoMap_zoom11 <- ggmap(get_map(location = "chicago",maptype ='roadmap', zoom = 11))
+ChicagoMap_zoom10 <- ggmap(get_map(location = "chicago",maptype ='roadmap', zoom = 10))
+```
+
+```{r warning=FALSE, message=FALSE, echo=FALSE }
+#### Heatmap of Parking Tickets by weekdays
+# Plot the heat map by day
+Sample_2018$weekday<- factor(Sample_2018$day, levels=c("Monday",
+    "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday","Sunday"))
+P_density_by_weekday <- ChicagoMap_zoom13 +
+stat_density2d(aes(x = lon, y = lat, fill = ..level.., alpha = ..level..),size = 0.01, bins = 10, geom ="polygon",data = Sample_2018) +
+scale_fill_gradient(low = "black", high = "blue")+theme(axis.title = element_blank(),axis.text = element_blank(),axis.ticks = element_blank())+
+  facet_wrap(~ weekday,nrow=2) 
+```  
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+### *2-4* Quantitative Analysis By day
+#### Calendar heatmap of ticket counts
+library(lubridate)
+library(ggplot2)
+library(plotly)
+library(plyr)
+Calendar_process <- function(Data){
+Data$issue_date2<- as.Date(format(as.POSIXct(Data$issue_date,format="%Y-%m-%d %H:%M:%S"),format="%Y-%m-%d"))
+Data$counts<-1
+temp_2016<-aggregate(Data$counts, list(Data$issue_date2), sum)
+temp_2016$weekday <- as.POSIXlt(temp_2016$Group.1)$wday
+temp_2016$weekday<-factor(temp_2016$weekday,levels=rev(c(1,2,3,4,5,6,0)),labels=rev(c("Mon","Tue","Wed","Thu","Fri","Sat","Sun")),ordered=TRUE)
+temp_2016$monthf<-factor(month(temp_2016$Group.1),levels=as.character(1:12),labels=c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"),ordered=TRUE)
+temp_2016$week <- as.numeric(format(temp_2016$Group.1,"%W"))
+temp_2016<-ddply(temp_2016,.(monthf),transform,monthweek=1+week-min(week))
+return (temp_2016)
+}
+
+
+```   
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+### *3-1* Map of Parking Tickets in 2018(-May)
+# Import the 'ZIPCODES' file whcih contains the sp data of Chicago's zip codes
+```
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+#------------------------------------------------------------#
+# Top10_ticketbyzipcode_YEAR        ------ Top 10 zipcodes gaining the most tickets
+#------------------------------------------------------------#
+# Get the 5-digit short zipcode
+Data_2016$shortcode <- substr(Data_2016$zipcode,1,5)
+Data_2017$shortcode <- substr(Data_2017$zipcode,1,5)
+Data_2018$shortcode <- substr(Data_2018$zipcode,1,5)
+# get the top10 zipcodes
+Select_top10_zipcode <- function(Dataset){
+  a <- as.data.frame(table(Dataset$shortcode))
+  names(a) <- c("violationtype", "times")
+  b <- a[order(a$times,decreasing = TRUE),]
+  c <- b[2:11,]
+  return (c)
+}
+
+Top10_ticketbyzipcode_2016 <- Select_top10_zipcode(Data_2016)
+Top10_ticketbyzipcode_2017 <- Select_top10_zipcode(Data_2017)
+Top10_ticketbyzipcode_2018 <- Select_top10_zipcode(Data_2018)
+# Visulize
+P_distribution_2018 <- ChicagoMap_zoom10 +   
+  geom_point(aes(x = lon, y = lat), colour = "red", data = Sample_2018, alpha=0.02, size = 0.8) + 
+  theme(legend.position="none")
+# by zip code
+library(GISTools)
+library(sp)
+library(spatstat)
+require(rgdal)
+library(maptools)
+library(tmap)
+chicode <- readOGR(dsn="./ZIPCODES",layer='geo_export_dae7a8a5-1f58-45e3-b49e-b6f876b3072a',verbose = FALSE)
+Zipcode_count_2016 <- as.data.frame(table(as.factor((Data_2016$shortcode))))
+Zipcode_count_2017 <- as.data.frame(table(as.factor((Data_2017$shortcode))))
+Zipcode_count_2018 <- as.data.frame(table(as.factor((Data_2018$shortcode))))
+names(Zipcode_count_2016) <- c("zipcode","2016 Ticket Counts")
+names(Zipcode_count_2017) <- c("zipcode","2017 Ticket Counts")
+names(Zipcode_count_2018) <- c("zipcode","2018 Ticket Counts")
+# Map 'Ticket Counts'
+chicode@data <- left_join(chicode@data, Zipcode_count_2016, by = c('zip' = 'zipcode'))
+chicode@data <- left_join(chicode@data, Zipcode_count_2017, by = c('zip' = 'zipcode'))
+chicode@data <- left_join(chicode@data, Zipcode_count_2018, by = c('zip' = 'zipcode'))
+P_distribution_zipcode <- qtm(shp = chicode, fill = c("2018 Ticket Counts"), fill.palette = "Blues")+tm_layout(legend.position = c(-0.01,0.02))
+```  
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE }
+### *3-2* Multiple Variable Regression on Ticket Counts of 2016 data
+Get_IL_proportion <- function (Dataset){
+  a <- as.data.frame(table(Dataset$license_plate_state))
+  names(a) <- c("state","count")
+  b<- max(a$count)
+  c<- sum(a$count)-max(a$count)
+  d<- b/(b+c)
+  return (d)
+}
+
+Get_IL_proportion_2016 <- Get_IL_proportion(Data_2016)
+Get_IL_proportion_2017 <- Get_IL_proportion(Data_2017)
+Get_IL_proportion_2018 <- Get_IL_proportion(Data_2018)
+
+
+proportion <- as.data.frame(c(Get_IL_proportion_2016, Get_IL_proportion_2017, Get_IL_proportion_2018))
+y <- as.data.frame(c("2016", "2017", "2018"))
+
+proportion <- cbind(y,proportion)
+names(proportion) <- c("year", "value")
+proportion$year <- as.factor(proportion$year)
+
+P_license_ratio <- ggplot(proportion, aes(x = year , y=proportion$value))+
+  geom_col(width = 0.5)+
+  labs(x= "year",y = "Proportion of IL-car's ticket by year")+
+  labs(title = "Proportion of IL-car's ticket by year")+
+  geom_text(aes(label=percent(proportion$value)), vjust=-0.3, size=3.5)
+
+#Clear workspace
+rm(y)
+
+```
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+# Import the 'Data_transcad.csv' file which contains the census data of 2017 (copyright @ Caliper INC, licensed by UC,Davis)
+#*List of used variables:*
+#HH_Median.income
+#Population
+#Male
+#Female
+#Median.Age
+#Mean.family.income
+#Vehicles_1
+#Vehicles_2
+#Vehicles_3.
+#Pct.in.poverty_All.families
+```
+
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+Data_transcad <- read.csv("./Data_transcad.csv", sep=",", header=TRUE) 
+Data_transcad$ZIP <- as.character(Data_transcad$ZIP)
+chicode@data <- left_join(chicode@data, Data_transcad, by = c('zip' = 'ZIP'))
+# Import required packages
+library('MASS')
+library(corrplot)
+library(RColorBrewer)
+MLR_Data <- chicode@data
+Ticket_Count <- as.data.frame(MLR_Data$`2016 Ticket Counts`)
+names(Ticket_Count) <- 'ticket_count'
+chicode@data$Ticket_Count_2016 <- Ticket_Count$ticket_count
+Ticket_Count<- as.numeric(Ticket_Count$ticket_count)
+X <- as.data.frame(cbind(MLR_Data$HH_Median.income,MLR_Data$Population,MLR_Data$Male,MLR_Data$Female,MLR_Data$Median.Age,MLR_Data$Mean.family.income,MLR_Data$Vehicles_1,MLR_Data$Vehicles_2,MLR_Data$Vehicles_3.,MLR_Data$Pct.in.poverty_All.families))
+HH_Median.Income <- MLR_Data$HH_Median.income
+population <- MLR_Data$Population
+Median_Age <- MLR_Data$Median.Age
+Mean_Family_Income <- MLR_Data$Mean.family.income
+Vehicle_3 <- MLR_Data$Vehicles_3.
+regression <- 'Ticket_Count ~ HH_Median.Income +population+MLR_Data$Male+MLR_Data$Female+Median_Age+Mean_Family_Income+MLR_Data$Vehicles_1+MLR_Data$Vehicles_2+Vehicle_3+MLR_Data$Pct.in.poverty_All.families'
+lmauto <- lm(regression)
+```
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+lm_trained <- stepAIC(lmauto,  direction = 'backward',trace=FALSE)
+```
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE }
+#### Show the difference between actual value and regression
+prediction <- as.data.frame(predict(lm_trained,X,interval="prediction",level=0.95))
+chicode@data$prediction_2016 <- prediction$fit
+P_data_prediction <- qtm(shp = chicode, fill = c("Ticket_Count_2016","prediction_2016"), fill.palette = "Blues")+tm_layout(legend.position = c(-0.01,0.02))
+```
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+### 4-1 The ratio of multiple violation cases in the past 3 years
+#### Build index for license plates receiving multiple tickets
+# Used function: Add_index_to_multi_fun
+```
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+#------------------------------------------------------------#
+# Multi_violation_idx_YEAR        ------ Multi_violation data with identity index in YEAR(2016,2017,2018)
+#------------------------------------------------------------#
+Add_index_to_multi_fun <- function(multiviolation){
+  a<- unique(multiviolation$license_plate_number)
+  a<- as.character(a)
+  c<- as.data.frame(a)
+  
+  
+  b <- matrix((1:nrow(c)),nrow(c),1)
+  b<- as.data.frame(b)
+  a<- cbind(b,a)
+  
+  index<- pmatch(as.character(multiviolation$license_plate_number) , a$a , nomatch = NA_integer_, duplicates.ok = TRUE)
+  return (cbind(index, multiviolation))
+}
+
+Multi_violation_idx_2016 <- Add_index_to_multi_fun(Multi_violation_2016)
+# Remove the same license plate code representing many cars
+intab16 <- as.matrix(table(Multi_violation_idx_2016$index))
+Multi_violation_idx_2016 <- subset(Multi_violation_idx_2016,index!=161734 )
+
+Multi_violation_idx_2017 <- Add_index_to_multi_fun(Multi_violation_2017)
+# Remove the same license plate code representing many cars
+intab17 <- as.matrix(table(Multi_violation_idx_2017$index))
+Multi_violation_idx_2017 <- subset(Multi_violation_idx_2017,index!=156905 )
+
+Multi_violation_idx_2018 <- Add_index_to_multi_fun(Multi_violation_2018)
+# Remove the same license plate code representing many cars
+intab18 <- as.matrix(table(Multi_violation_idx_2018$index))
+Multi_violation_idx_2018 <- subset(Multi_violation_idx_2018,index!=51290 )
+
+```
+
+
+```{r  warning=FALSE, message=FALSE, echo=FALSE}
+rm(Violation_freq)
+rm(Freq_table)
+Violation_freq <- data.frame(table(as.numeric(Multi_violation$license_plate_number)))
+Freq_table <- data.frame(table(Violation_freq$Freq))
+Freq_table <- Freq_table[-nrow(Freq_table),]
+names(Freq_table)[1] <- "Violation_times"
+names(Freq_table)[2] <- "Counts"
+Freq_table_waffle <- Freq_table
+Freq_table_waffle$Violation_times <- as.numeric(Freq_table_waffle$Violation_times)+1
+Once_violation_counts <- nrow(Dataset)-nrow(Multi_violation)
+Multi_violation_counts <- nrow(Multi_violation)
+Freq_table_waffle <- rbind(c(1,Once_violation_counts),Freq_table_waffle)
+Freq_counts_waffle <- c(Freq_table_waffle$Counts[1],Freq_table_waffle$Counts[2],Freq_table_waffle$Counts[3],nrow(Dataset)-Freq_table_waffle$Counts[1]-Freq_table_waffle$Counts[2]-Freq_table_waffle$Counts[3])
+val_names <- sprintf("%s (%s)", c("Once", "Twice", "Three Times","More Than Three Times"), scales::percent(round(Freq_counts_waffle/sum(Freq_counts_waffle), 3)))
+names(Freq_counts_waffle) <- val_names
+P_waffle <- waffle(Freq_counts_waffle/10000, rows=20,title="Violation Times of a Single Vehicle", xlab="1 square is 10,000 cases.",colors = c("#bdd7e7",  "#6baed6","#3182bd","#08519c" ))
+ 
+```  
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+
+#### Show the top5 violation reasons of each year
+#------------------------------------------------------------#
+# Top5_violationtype_YEAR        ------ Top 5 violation types in YEAR
+#------------------------------------------------------------#
+Select_top5_violationtype <- function(Dataset){
+  a <- as.data.frame(table(Dataset$violation_description))
+  names(a) <- c("violationtype", "times")
+  b <- a[order(a$times,decreasing = TRUE),]
+  c <- b[1:5,]
+  return (c)
+}
+
+Top5_violationtype_2016 <- Select_top5_violationtype(Data_2016)
+Top5_violationtype_2017 <- Select_top5_violationtype(Data_2017)
+Top5_violationtype_2018 <- Select_top5_violationtype(Data_2018)
+Top5_violationtype_2017$times[5] <- 320452 
+
+#======================================DATA VISULATION=========================================#
+###  ========================================%2016%=========================================================
+Top5_violationtype_2016$violationtype <- factor(Top5_violationtype_2016$violationtype, levels = Top5_violationtype_2016$violationtype[order(Top5_violationtype_2016$times)])
+
+
+P_top5_2016 <- ggplot(Top5_violationtype_2016, aes(x = violationtype , y=times))+
+  geom_col()+
+  xlab("")+
+  coord_flip()+
+  theme(text = element_text(size=10),
+              axis.text.x = element_text(angle=60, hjust=1)) +
+  labs(title = "Top 5 violation type in 2016")
+
+###  ========================================%2017%=========================================================
+Top5_violationtype_2017$violationtype <- factor(Top5_violationtype_2017$violationtype, levels = Top5_violationtype_2017$violationtype[order(Top5_violationtype_2017$times)])
+
+
+P_top5_2017 <- ggplot(Top5_violationtype_2017, aes(x = violationtype , y=times))+
+  geom_col()+
+  xlab("")+
+  coord_flip()+
+  theme(text = element_text(size=10),
+              axis.text.x = element_text(angle=60, hjust=1)) +
+  labs(title = "Top 5 violation type in 2017")
+
+###  ========================================%2018%=========================================================
+Top5_violationtype_2018$violationtype <- factor(Top5_violationtype_2018$violationtype, levels = Top5_violationtype_2018$violationtype[order(Top5_violationtype_2018$times)])
+
+
+P_top5_2018 <- ggplot(Top5_violationtype_2016, aes(x = violationtype , y=times))+
+  geom_col()+
+  xlab("")+
+  coord_flip()+
+  theme(text = element_text(size=10),
+              axis.text.x = element_text(angle=60, hjust=1)) +
+labs(title = "Top 5 violation type in 2018")
+
+
+
+
+```  
+
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+### *4-2* Fine amounts distribution
+# Add the total fine amounts to the data sets
+Multi_violation_idx_2016$total_fine = Multi_violation_idx_2016$current_amount_due+Multi_violation_idx_2016$total_payments
+Multi_violation_idx_2017$total_fine = Multi_violation_idx_2017$current_amount_due+Multi_violation_idx_2017$total_payments
+Multi_violation_idx_2018$total_fine = Multi_violation_idx_2018$current_amount_due+Multi_violation_idx_2018$total_payments
+###  ========================================%2016%=========================================================
+
+a <- tapply((Multi_violation_idx_2016$total_fine) ,as.factor(Multi_violation_idx_2016$index) ,  sum)
+a <- as.matrix(a)
+
+c<- nrow(a)
+
+b <- matrix((1:(c)),(c),1)
+
+# Obtain Multiple_fine_amount
+Multiple_fine_amount <- as.data.frame(cbind(b,a))
+names(Multiple_fine_amount) <- c("person index", "amount")
+
+rm(c)
+rm(b)
+rm(a)
+
+#boxplot(Multiple_fine_amount$amount)
+#max(Multiple_fine_amount)
+## turns out some of them are way too big
+
+## some kind of filter needs to be set:
+a <- subset(Multiple_fine_amount, Multiple_fine_amount$amount<=3900)
+b <- subset(Multiple_fine_amount, Multiple_fine_amount$amount >3900)
+
+# delete the max amount which is 140000+
+b<- b[-which(b$amount==max(b$amount)),]
+
+
+# boxplot(a$amount)
+# boxplot(b$amount)
+
+##ggplot:
+
+P_b3900_2016 <- ggplot(a, aes(x="amount", y=amount)) +
+  geom_boxplot() + 
+  labs(x= "Group 1: Total Amount <= 3900",y = "Amount")+
+  labs(title = 'In 2016', subtitle = "Total Fine Amount (<=3900) among people with more than one ticket")
+
+
+
+P_a3900_2016 <- ggplot(b, aes(x="amount", y=amount)) +
+  geom_boxplot() + 
+  labs(x= "Group 2: Total Amount > 3900",y = "Amount")+
+  labs(title = 'In 2016', subtitle = "Total Fine Amount (>3900) among people with more than one ticket")
+
+#grid.arrange(P1, P2, nrow = 1, ncol =2)
+rm(a)
+rm(b)
+
+###  ========================================%2017%=========================================================
+
+a <- tapply((Multi_violation_idx_2017$current_amount_due + Multi_violation_idx_2017$total_payments) ,as.factor(Multi_violation_idx_2017$index) ,  sum)
+
+a <- as.matrix(a)
+
+c<- nrow(a)
+
+b <- matrix((1:(c)),(c),1)
+
+# Obtain Multiple_fine_amount
+Multiple_fine_amount <- as.data.frame(cbind(b,a))
+names(Multiple_fine_amount) <- c("person index", "amount")
+
+rm(c)
+rm(b)
+rm(a)
+
+
+#boxplot(Multiple_fine_amount$amount)
+#max(Multiple_fine_amount)
+## turns out some of them are way too big
+
+## some kind of filter needs to be set:
+a <- subset(Multiple_fine_amount, Multiple_fine_amount$amount<=3900)
+b <- subset(Multiple_fine_amount, Multiple_fine_amount$amount >3900)
+
+# delete the max amount which is 140000+
+b<- b[-which(b$amount==max(b$amount)),]
+
+
+# boxplot(a$amount)
+# boxplot(b$amount)
+
+##ggplot:
+
+P_b3900_2017 <- ggplot(a, aes(x="amount", y=amount)) +
+  geom_boxplot() + 
+  labs(x= "Group 1: Total Amount <= 3900",y = "Amount")+
+  labs(title = "In 2017", subtitle = "Total Fine Amount (<=3900) among people with more than one ticket")
+
+
+
+P_a3900_2017 <- ggplot(b, aes(x="amount", y=amount)) +
+  geom_boxplot() + 
+  labs(x= "Group 2: Total Amount > 3900",y = "Amount")+
+  labs(title = "In 2017", subtitle = "Total Fine Amount (>3900) among people with more than one ticket")
+
+
+#grid.arrange(P1, P2, P3, P4 ,nrow = 2, ncol =2)
+
+rm(a)
+rm(b)
+
+###  ========================================%2018%=========================================================
+
+a <- tapply((Multi_violation_idx_2018$current_amount_due + Multi_violation_idx_2018$total_payments) ,as.factor(Multi_violation_idx_2018$index) ,  sum)
+
+a <- as.matrix(a)
+c<- nrow(a)
+b <- matrix((1:(c)),(c),1)
+
+# Obtain Multiple_fine_amount
+Multiple_fine_amount <- as.data.frame(cbind(b,a))
+names(Multiple_fine_amount) <- c("person index", "amount")
+
+rm(c)
+rm(b)
+rm(a)
+
+
+#boxplot(Multiple_fine_amount$amount)
+#max(Multiple_fine_amount)
+## turns out some of them are way too big
+
+## some kind of filter needs to be set:
+a <- subset(Multiple_fine_amount, Multiple_fine_amount$amount<=3900)
+b <- subset(Multiple_fine_amount, Multiple_fine_amount$amount > 3900)
+
+# delete the max amount which is 140000+
+b<- b[-which(b$amount==max(b$amount)),]
+
+
+# boxplot(a$amount)
+# boxplot(b$amount)
+
+##ggplot:
+
+P_b3900_2018 <- ggplot(a, aes(x="amount", y=amount)) +
+  geom_boxplot() + 
+  labs(x= "Group 1: Total Amount <= 3900",y = "Amount")+
+  labs(title = "In 2018", subtitle = "Total Fine Amount (<=3900) among people with more than one ticket")
+
+
+
+P_a3900_2018 <- ggplot(b, aes(x="amount", y=amount)) +
+  geom_boxplot() + 
+  labs(x= "Group 2: Total Amount > 3900",y = "Amount")+
+  labs(title = "In 2018", subtitle = "Total Fine Amount (>3900) among people with more than one ticket")
+
+
+# clear workspace
+rm(a)
+rm(b)
+```
+
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+### *4-3* Ticket queue type transition of license plates with Multiple violations 
+#### Use SQL method to find the transition from non-bankruptcy to bankruptcy and bankruptcy to non-bankruptcy
+library(sqldf)
+Find_tobkrpc_counts <- function(Data) {
+count = 0
+DT <- data.frame(Data$index, Data$ticket_queue)
+names(DT) = c('id','type')
+rownames(DT) <- 1:nrow(DT)
+res1 <- sqldf("select id, min(rowid),type
+              from DT
+              group by id")
+res2 <- sqldf("select id, max(rowid), type
+              from DT
+              group by id")
+for (i in 1:nrow(res1)) {
+  if (res1$type[i] != 'Bankruptcy' & res2$type[i] =='Bankruptcy'){ 
+    count = count+1
+    }
+}
+return (count)
+
+}
+bkrpc_count_2016 <-Find_tobkrpc_counts(Multi_violation_idx_2016)
+bkrpc_count_2017 <-Find_tobkrpc_counts(Multi_violation_idx_2017)
+bkrpc_count_2018 <-Find_tobkrpc_counts(Multi_violation_idx_2018)
+bkrpc_count_matrix <- as.data.frame(matrix(c(1117, 497),nrow = 2))
+bkrpc_count_matrix$year <- c('2016','2017')
+names(bkrpc_count_matrix) <- c('People','Year')
+P_bkrpc <- ggplot(bkrpc_count_matrix,aes(Year,People))+
+geom_bar(stat="identity",position="stack")+
+guides(fill=guide_legend(title=NULL))+ggtitle("Cases from non-bankruptcy to bankrupcty of ticket queue status")+
+  geom_text(aes(label=c('1117','497')), vjust=-0.3, size=3.5)
+
+
+Find_tonobkrpc_counts <- function(Data) {
+count = 0
+DT <- data.frame(Data$index, Data$ticket_queue)
+names(DT) = c('id','type')
+rownames(DT) <- 1:nrow(DT)
+res1 <- sqldf("select id, min(rowid),type
+              from DT
+              group by id")
+res2 <- sqldf("select id, max(rowid), type
+              from DT
+              group by id")
+for (i in 1:nrow(res1)) {
+  if (res1$type[i] == 'Bankruptcy' & res2$type[i] !='Bankruptcy'){ 
+    count = count+1
+    }
+}
+return (count)
+
+}
+nobkrpc_count_2016 <-Find_tonobkrpc_counts(Multi_violation_idx_2016)
+nobkrpc_count_2017 <-Find_tonobkrpc_counts(Multi_violation_idx_2017)
+nobkrpc_count_2018 <-Find_tonobkrpc_counts(Multi_violation_idx_2018)
+nobkrpc_count_matrix <- as.data.frame(matrix(c(986,1146),nrow = 2))
+nobkrpc_count_matrix$year <- c('2016','2017')
+names(nobkrpc_count_matrix) <- c('People','Year')
+P_nobkrpc <- ggplot(nobkrpc_count_matrix,aes(Year,People))+
+geom_bar(stat="identity",position="stack")+
+guides(fill=guide_legend(title=NULL))+ggtitle("Cases from bankrupcty to non-bankruptcy of ticket queue status")+
+  geom_text(aes(label=c('986','1146')), vjust=-0.3, size=3.5)
+```
+
+
+<h1 style="text-align:center">Spatio-temporal and socio-economic analysis of Chicago parking tickets</h1>
+<h4 style="text-align:center">Ye Chao </h4>
+<h4 style="text-align:center">{yechao} @ ucdavis.edu</h4> 
+
+##**1 Introduction**  
+
+Based on the data from Pro Publica, in 2016, the Chicago government brought in 264 million of dollars revenue by issuing parking ticket, which is 7% of the total operation cost of the city (Sanchez & Kambhampati, 2018). In 2017, 162 million dollars of tickets more were issued, and 87 million dollars late fees were charged (Black, 2018). According to Top View, average 97.2 dollars ticket revenue were made by the government from each capita in Chicago for each year which is the 4th highest among the United States (Thomas, 2018).  
+
+Managing vehicles and parking system by issuing ticket is understandable but the Chicago government used it as one way to make profit and cause some serious debt problems. To fill the budget gap, the government decided to raise sticker violation fine to 200 dollars in 2012. This ticket became the largest source of the debt in the following years due to its high cost and large quantity (Black, 2018). In 2015, Chicago¡¯s unpaid ticket grew to 1.5 billion dollars which was higher than the ticket debts in Los Angeles and New York even though these two cities had higher population and more ticket issued annually (Brockway, 2015). Nearly 40% of the total debt was from low-income families who couldn¡¯t afford it (Sanchez & Kambhampati, 2018). Moreover, the government decided to punish the people who did not pay the ticket by suspending their driver license and impound their vehicle. Also, the people with unpaid tickets were prohibited to find a job and get any contract, license, and social welfare until they clear their debts. (Sanchez & Kambhampati, 2018).
+
+Not only the ticket debt has become one of the biggest burdens for the citizens in Chicago, but also the government has been frustrated with these ticket debts for a long time. Even the government used several methods to punish the people with huge ticket debt and forced them to clear their debts. These people also had some tactics to help them get away from the punishments. One of the most often used method in Chicago was Applying Chapter 13 Bankruptcy. By applying this type of bankruptcy with only 310 dollars, debtors could free their impounded cars, reinstate their suspended license, stop any debt collection activities, and wipe out some parking tickets (Sanchez & Kambhampati, 2018). Even though applying bankruptcy couldn¡¯t waive all the debt they have, debtors were allowed to pay the debt within a longer period (up to 5 years). However, based on the studies in 2010, less than a quarter of the Chapter 13 bankruptcies that included ticket debt end successfully because most debtors just tried to get their impounded cars, reinstate their licenses, or keep their jobs but not intended to clear the debts (Sanchez & Kambhampati, 2018). Although the government could go after those debtors again after the previous bankruptcies dismissed, those debtors might apply the bankruptcy again which means that cities could only recover a little from these cases. Based on the data from 2007 to 2017, number of Chapter 13 bankruptcies raised from 1000 cases to more than 10000 cases and the debt for each case raised from 1000 dollars to 3900 dollars (Sanchez & Kambhampati, 2018). It was a trend that people with huge debt tended to file the bankruptcy to avoid the punishment of not paying the parking ticket and it became a huge obstacle for the government to collect the parking ticket debt.
+
+Thus, the motivations of this study are to relieve some of the debt burden for Chicago citizens and to help the government stem the flood of bankruptcy and retrieve the parking ticket debts. In this study, the spatial distribution of the parking tickets and the relationship between number of issued parking tickets and issue time are investigated which can be used to reflect the parking condition for different places and at different time. Future studies can use this information to optimize the parking system in Chicago. Secondly, the most correlated factors to number of parking tickets issued were determined in this study which can be used to design a more reasonable fine system. Lastly, the analysis on the number of bankruptcies annually in 2016 and 2017 is performed to understand the trend change.
+
+
+##**2 Methodology**
+
+###**2.1 Datasets**
+
+The datasets used in this study were Chicago parking violation information, Chicago social econometrics in 2016, and Chicago zip code geographical coordinates. Details were as follow: 
+
+####2.1.1 Chicago Parking Violation
+
+Chicago parking violation information was recorded from 2016-01-01 to 2018-05-14, including violation location, ticket fine amount, violation description, license plate, and vehicle make, registration zip code, ticket status and etc. Total 2254275, 2190763, 769219 records were captured in 2016, 2017 and 2018 respectively. These records was cleaned and analyzed based on objectives in the project.
+
+####2.1.2 Chicago Social Econometrics Data
+
+To determine correlation between violation vehicles¡¯ registration zip code and the regional attributes with over 544 variables, including household median income, population, gender distribution and average car ownership data, etc, the 2016 Chicago social econometrics dataset which primary key was zip code was brought in from TransCAD 8.0, Caliper INC, licensed by UC Davis
+
+####2.1.3 Chicago Zip Code  
+To visualize data in ggmap, the regional boundaries for each zip code need to be defined. Thus, Geographical polygons was brought in from Chicago City Data Portal to provide zip code regions¡¯ boundaries.
+
+###**2.2 Data Pre-process**
+
+####2.2.1 Violation Time Pre-process
+
+Firstly, violation time was taken as a primary key. Then, factor type was converted into POSIXlt. After sorting the violation time chronologically, we remove the duplicating rows and subset the whole dataset by the year of 2016, 2017, and 2018 as Data_2016, Data_2017, and Data_2018 respectively. 
+
+####2.2.2 Violation Location Pre-process
+
+In the original dataset, the violation location was the address that the violations happened. For the purpose of analyzing geographical information on parking violation, these addresses were converted into longitudinal and latitudinal coordinates by using function geocode provided by google map Api. The input of the function geocode was character type address. However, inputting address in the dataset directly could cause searching error since the address names could be duplicated. After characterized the address variable in the original dataset, ¡°, Chicago, IL¡± is added in the end of each address. 
+
+####2.2.3 Violation Type Pre-process
+The violation type variables in the original dataset lacked standardization with more than 100 levels in which there are problems with singular-plural and upper-lower case. The singular and plural was unified by using topper function and singularize function in pacman package. 
+
+####2.2.4 Zip Code Pre-process
+
+Some of zip codes are using 5-digit zip code while some of them are 9 digit (ZIP+4) format in original dataset. To match with the zip code polygon data brought in, first 5 digits of the zip code were extracted to get a unified 5-digit zip code. 
+
+####2.2.5 License Plate Number Pre-process
+
+In the original dataset, the license plate number were encrypted by algorithm. However, there are some license plate numbers didn¡¯t match with the vehicles¡¯ make in a few cases, which means one license plate number(coded) represented multiple. Also, some license plate showed up more than 360000 times. This part of data was removed so that the one license plate numbers could only match one vehicle.   
+
+###**2.3 Methods**
+
+####2.3.1 Indexing Car Owners with Plate Numbers & Multiple Violation Record
+
+To conduct analysis on each car owner, unique index for each car owner was created based on unique license plate numbers after modified the original dataset by using the method mentioned in 2.3.5. It means each index only corresponded to one license plate number and represent only one car owner. This method was applied on original data subsets for 2016, 2017, and 2018. 
+
+The reason is that the major subjects for this study were the people with multiple violation records. These people could be more relevant to the parking ticket debts problem. The new subsets with new index were made for 2016, 2017, and 2018 to only focus on these people who have multiple violation-record for further analysis. 
+
+####2.3.2 Chicago Parking Violation Temporal Pattern Mining 
+
+The cleaned subsets of 2016, 2017, and 2018 was used to deliver the following analysis:
+
+(1)	Aggregated by year
+For each subset, total and average tickets number and fine amount were calculated to evaluate Chicago city parking tickets issuing variation in each year.   
+
+(2) Aggregated by month
+In each subset, monthly ticket counts andticket amount were calculated by using function tapply to evaluate Chicago city parking tickets issuing variation for each month. 
+
+(3) Aggregated by day
+The tickets issued for each day were plotted on a calendar heat map for 2016, 2017, 2018 respectively. The calendar heat map of each year was obtained by an independent function which separates months and days in a calendar-arrange way within a whole year. 
+
+####2.3.3 Chicago Parking Violation Spatial Pattern Mining 
+
+(1) geocode
+The function geocode was offered within the google map Api by using the character type of address as an input. However, when used geocode function, the calculation speed was limited by network bandwidth and the google map server. The maximum speed only calculated 50 times per second and the limitation on the times running the function within one account is 100000. As a result, in subset of 2016, 2017, and 2018, random violation samples with after-modified address(introduced in 2.3.2) are selected to run the geocode function for a total 200000 times. The output is a dataset with information about the input address, and select the longitude and latitude information to combine with the original selected samples correspondingly to get the locations coordinates for some of the violations. 
+
+(2) ggmap and Spatial Distribute
+After the loading ggmap with Api key, geographical coordinates could be plot onto the map. Using geom_point to get a scatter distribution plot and stat_density2d to get a distribution plot on density. In addition, by bring in the zip code boundaries geographical coordinates data (2.1.3) and merging with the yearly subsets by zip codes separately, the total tickets counts with respect to each zip code area could be visualize within the map. 
+
+(3)	Multi-Variable Regression on Ticket Counts per Capita
+In the purpose of investigating the relation between total ticket counts and socio-economic variables. The dataset of the Chicago Social Econometrics Data (2.1.2) with zip code as primary key is brought in. By looking parking as one of the urban social demand of static traffic way and using the experience of travel demand regression, we select population, household median income, family mean income, male/female population, median age, percentage of poverty, car ownership per household and etc. as independent variables to run the multi-variable regression with dependent variable being ticket counts per capita in each zip code area. In the model section sector, according to the Akaike Information Criterion (AIC), which describes the regression quality of the statistical models. The lower the value is, the better it fits. The AIC value of the model is the following
+
+<h4 style="text-align:center">AIC = 2k - 2ln(L)</h4>
+ 
+By testing the AIC value with different variables¡¯ combinations and running the iterations backward, we could get the function in which the AIC value is lowest and that function being the best fit to the regression. Then the most significant variables will be selected, the validity of the selected model will be checked in the end.
+
+####2.3.4 Bankruptcy Cases Recording
+
+The bankruptcy records are selected by using sql package. Since we want to focus on the people that went into bankruptcy, in each person index, select people from bankruptcy status to non- bankruptcy and non-bankruptcy status to bankruptcy status and apply it to 2016, 2017 and 2018 subsets with unique personal index.
+
+##**3 Results** 
+
+###**3.1 Temporal Analysis**
+####3.1.1 Analysis by year
+
+Figure 1 and figure 2 show the aggregate counts of all the parking tickets and fine amounts in 2016 and 2017 respectively. The total ticket counts decreased by 2.8 % in 2017 compared with that of 2016. Simultaneously, the total fine amounts dropped from 257.495 million to 248.275 dollars, a decrease of 3.6%. The average fine amounts of tickets are roughly the same in 2016 and 2017, however, the statistical data until April in 2018 indicates a 28.6% drop from 2017 count, which is possibly attributed to partial exemption from late fee of the next months.
+
+```{r echo=FALSE, warning = FALSE, message = FALSE,fig.width = 5, fig.height= 5, fig.cap="Figure 1. Annual Ticket Counts of  2016 and 2017"}
+P_Count_by_year
+```
+
+
+```{r echo=FALSE, warning = FALSE, message = FALSE,fig.width = 5, fig.height= 5, fig.cap="Figure 2. Annual Fine Amounts of 2016 and 2017"}
+P_fine_by_year
+```
+
+####3.1.2 Analysis by month
+
+While the aggregate counts of parking tickets and fine amounts indicates homogeneity, there exits a variance in quantity from January to December, February has the smallest number on these counts. 2016 and 2017 share the same time-varying trend both in ticket counts and fine amounts, which is a sharp decrease from January to February, then an oscillation between two peaks on March and October, finally a continuous decline on the last two months. Notably, winter months have the low rates of ticket counts and fine amounts, which is high possibly related to the cold winter weather in Chicago. There will be less trip generation in extreme weather conditions, parking, part of Static Traffic will reduce correspondingly.   
+
+```{r echo=FALSE,warning = FALSE, message = FALSE, fig.width = 8, warning = FALSE, message = FALSE,fig.height= 5, fig.cap="Figure 3. Ticket Counts of Each Month "}
+P_count_by_month
+```  
+
+```{r echo=FALSE, fig.width = 8, warning = FALSE, message = FALSE,fig.height= 5, fig.cap="Figure 4. Fine Amounts of Each Month "}
+P_fine_by_month
+```
+
+
+####3.1.3 Analysis by day
+
+The calendar heatmap shows the temporal distribution of ticket counts of each day in each year. It is obvious that weekends¡¯ parking tickets are nearly 75% less than weekdays¡¯, which suggests the main part of parking tickets are brought by commuting trips of people with work. This conclusion can be confirmed by figure 4. With the latitude and longitude information of 66000 samples of 2018 obtained by the geocode() method, the heatmap of parking tickets demonstrates the spatial heterogeneity between weekdays and weekends. The regions that always exists on the heatmap(the upper part on weekdays) are mainly residential areas, producing continuous parking needs. The lower part on weekdays becomes more sparse, even disappears on weekends. We can figure out this area is downtown Chicago, with CBD located in the center. 
+
+```{r echo=FALSE, warning = FALSE, message = FALSE,fig.width = 8, fig.height= 5, fig.cap="Figure 5. Calendar Heatmap of Ticket Counts in 2016 "}
+ Data_2016_calendar <- Calendar_process(Data_2016)
+ ggplot(Data_2016_calendar, aes(monthweek, weekday, fill = x)) + 
+  geom_tile(colour = "white") + facet_wrap(~monthf) + 
+  scale_fill_gradient(high="red",low= "green") +
+  theme_classic(base_size = 10)+xlab("Week of Month") + 
+  ylab("") + 
+  ggtitle("Time-Series Calendar Heatmap: Daily Total Tickets Issued 2016") + 
+  labs(fill = "Total Ticket Issued")
+```
+
+
+
+###**3.2 Spatial Analysis**  
+
+####3.2.1  Zonal distribution of parking tickets
+
+Based on the longitude and latitude information of the 2018 samples, the spatial distribution parking tickets shows an inhomogeneity in Figure 6.
+
+```{r echo=FALSE, warning = FALSE, message = FALSE,fig.width = 8, fig.height= 5, fig.cap="Figure 6. Spatial Distriution of Ticket Counts in 2018 "}
+P_distribution_2018
+```  
+
+In order to figure out the relationship between tickets¡¯ spatial distribution and socio-economic factors, similarly to urban transportation modeling, we apply the Traffic Analysis Zone(TAZ) method to define research interest areas. Naturally, areas divided by zip codes are set as TAZs(Figure 7), for the census data we use is archived on zip codes.   
+```{r echo=FALSE,warning = FALSE, message = FALSE, fig.width = 8, fig.height= 5, fig.cap="Figure 7. Zonal Distriution of Ticket Counts in 2018 "}
+P_distribution_zipcode
+```  
+
+The ¡®license_plate_state¡¯ variable explains which state the license plates belong to, figure 8 displays the ratios of Illinois license plates getting parking tickets in each year. The ratios are around 90%, suggesting most of the parking violation cases in Chicago are caused by local cars, thus the relationship concluded from linear regression method is representative, though there may exit a bias since the socio-economic data out of Chicago area is not considered.
+
+```{r echo=FALSE,warning = FALSE, message = FALSE, fig.width = 8, fig.height= 5, fig.cap="Figure 8. Ratio of Illinois License Plates in Parking Tickets "}
+P_license_ratio
+```  
+
+####3.2.2  Linear Regression on ticket counts
+
+Based on the AIC criteria, the independent variables of the linear model after selection are population, median age, mean family income, and 3 or above car ownership per household. The linear model could be used in visualizing the correlation after check the validity of the model.
+
+```{r echo=FALSE,warning = FALSE, message = FALSE, fig.width = 8, fig.height= 5, fig.cap="Figure 9. Actual and Predictive Zonal Distriution of Ticket Counts in 2016 "}
+P_data_prediction
+```  
+
+The trained linear regression model is,
+
+Ticketcount = 1.33e+04 + 5.45e-01*Population - 3.39e+02*MedianAge - 2.328e-02 *FamilyIncome ¨C 3.556+00 *Vehicle3  
+
+####3.2.3  Performance of the trained linear regression model
+
+The residual plot of the new model shows that error doesn¡¯t have obvious bias, and is around 0. At the same time, the Q-Q plot shows that the normal hypothesis is true since the points all distribute around y=x.
+
+```{r echo=FALSE,warning = FALSE, message = FALSE, fig.width = 8, fig.height= 5, fig.cap="Figure 10. Residual Plot of Trained Linear Regression Model "}
+plot(lm_trained)
+``` 
+
+Since the p-value or the F-value evaluates the variables in the model collectively. As it is shown in the anova table, the p-value of mean family income is 0.05 and so is the population. Median age, and 3 or above car ownership per household are all far less than 0.05, which means statistically significant to the model.
+
+```{r echo=FALSE,warning = FALSE, results = 'asis',message = FALSE}
+knitr::kable(anova(lm_trained), caption = "Table 1. Anova Table of Trained Linear Regression Model")
+``` 
+
+For the selected linear model, the multiple R-squared is 0.9185, and the adjusted R-squared is 0.9126. Results show the model is in a good fitting condition.
+
+
+###**3.3 Trend of Bankruptcy Ralated to Parking Tickets**  
+
+The vehicles that had parking ticket in 2016 and 2017 were separated into 4 groups by the number of violations. Figure 13 shows that 70% of the vehicles had more than three tickets within these two years and only 20% of the vehicle had just one violation within these two years. 
+
+```{r echo=FALSE,warning = FALSE, message = FALSE, fig.width = 8, fig.height= 5, fig.cap="Figure 11. Waffle Chart of Different Violation Times "}
+P_waffle
+``` 
+
+In this study, the vehicles with more than two times violation within these two years are the subject for bankruptcy analysis because if the vehicle only had one parking ticket in two years, it would be unlikely the owner of the vehicle to apply the Chapter 13 bankruptcies. By plotting violation reason for all these cases in different year, it is clearly to see that expired plates or sticker violation is the top reason for vehicle to get a ticket for all three years which is consistent with the statement in Curtis Black¡¯s article that the main source of the parking ticket debt is the tickets related to expired stickers (Black, 2018).
+
+```{r echo=FALSE,warning = FALSE, message = FALSE, fig.width = 8, fig.height= 5, fig.cap="Figure 12. Top 5 Violation Types "}
+grid.arrange(P_top5_2016,P_top5_2017,P_top5_2018, nrow = 3)
+``` 
+
+By tracking the ticket queue status in the data, 497 people claimed bankruptcies after receiving several tickets in 2017. The number was reduced by 55% compared to 1114 people who claimed bankruptcies in 2016. Also, there were 1146 bankruptcies cases that changed to non-bankruptcies status in 2017 and it was a 16% increase compared to 986 cases from bankruptcies status to non-bankruptcies status in 2016. The trend from 2016 to 2017 is not consistent with the general trend that number of bankruptcy cases raised from 1000 to 10000 from 2007 to 2017 mentioned in Sanchez and Kambhampati¡¯s paper (Sanchez & Kambhampati, 2018). 
+
+```{r echo=FALSE,warning = FALSE, message = FALSE, fig.width = 8, fig.height= 5, fig.cap="Figure 13. Counts of Bankruptcy to Non-bankruptcy cases "}
+P_bkrpc
+``` 
+
+```{r echo=FALSE,warning = FALSE, message = FALSE, fig.width = 8, fig.height= 5, fig.cap="Figure 14. Counts of Non-bankruptcy to Bankruptcy cases "}
+P_nobkrpc
+``` 
+
+
+One of the reasons is that since 2016, the government unveiled a new law that the government would hold the liens of impounded cars until the underlying ticket debt getting paid out fully during the bankruptcy payment plan (Sanchez & Kambhampati, 2018). Thus, filing Chapter 13 bankruptcy to release the impounded cars or reinstate the suspension licenses would not be a feasible method anymore, which means it is possible that the government could retrieve back more debt with this new law. 
+
+
+##**4 Conclusion and Discussion** 
+
+###**Summary** 
+
+(1)	Both number of tickets issued and total fine amount decreased by about 3% from 2016 to 2017. There was 28.6% drop on total fine amount from 2017 to 2018 by only apply first four months data of these two years. 
+
+(2)	February is the month that has the lowest total counts of ticket and total fine amount for 2016, 2017, and 2018.  
+(3)	Parking tickets are issued 75% less in weekend compared to in weekdays. The majority of the tickets issued was from residential area during the weekend and the majority of the tickets issued was from both residential area and CBD during weekdays. 
+
+(4)	Chicago area are divided into Transportation Analysis Zones by zip codes, linear regression is utilized to generate the relationship between parking tickets count with socio-economic variables, the 4 most significant ones are selected by AIC criteria.
+
+(5)	More than 80% of the people got tickets more than once in a year. The top violation reason was expiration of plate or stickers. 
+
+(6)	From 2016 to 2017, the number of people claim bankruptcy decreased by 55% and the number of bankruptcy case that change to non-bankruptcy status increased by 16%
+
+###**Critique on the methods**
+(1)	The linear regression model between the parking ticket and the social econometrics is not solid enough. 
+First, since the parking tickets could be reverent with the attributes of social patterns, it could also be effects by the other significant factors including spatial factors. For examples, as for the Chicago downtown area where the parking demand is enormous, the supply side could be limited by early urban planning. The parking violation would be more likely to happen. By just using the social econometrics dataset, though it might be suitable for relatively rural area, the application of the same kind of regression on all zip codes area. Second, the results could have been more persuasive if using dependent variable per capita. Intuitively speaking, the total violation count will be increasing with population. 
+
+(2)	Bankruptcy
+As for the discussion on bankruptcy, the only method used is that to search for people that went into bankruptcy. Among these people, many could choose to go into bankruptcy to avoid tickets¡¯ debt. Only using these parts of data would not be enough if the purpose is to focus to the group of people that really cannot pay their ticket debt.
+
+(3)	Continuity
+The result from the temporal analysis is not being used in the latter part. It could have been better if the results from temporal analysis applied to the spatial and bankruptcy analysis.  
+
+###**Future work**
+(1)	Did a regression based on violation per capita and the results were not showing strong correlation. Investigate the reasons for that is needed to be done in detail.
+(2)	Social econometrics from other year beside than 2016 is needed in order to limit the randomness of one year data. 
+(3)	A method to select the real bankruptcy people and analysis on them is needed to help optimizing policy. 
+
+
+##**5 References** 
+
+Akaike, H. (1974). A new look at the statistical model identification. IEEE transactions on automatic control, 19(6), 716-723.
+
+Brockway, Mike. ¡°$1.5 Billion in Unpaid Tickets Could Be Huge Cash Cow for Chicago.¡± DNAinfo Chicago,  31 Mar. 2015, www.dnainfo.com/chicago/20150331/downtown/15-billion-unpaid-tickets-could-be-huge-cash-cow-for-chicago.
+
+¡°Chapter 13 Bankruptcy and Unpaid Chicago Parking Tickets.¡± DebtStoppers, Bankruptcy Law Firm Robert J. Semrad & Assoc., LLC, www.debtstoppers.com/eliminating-debt/chapter-13-bankruptcy-and-unpaid-chicago-parking-tickets/.
+
+Sanchez, Melissa, and Sandhya Kambhampati. ¡°How Chicago Ticket Debt Sends Black Motorists Into Bankruptcy.¡± ProPublica, 27 Feb. 2018, features.propublica.org/driven-into-debt/chicago-ticket-debt-bankruptcy/
+
+Thomas, Steven. ¡°How Much 25 Major Cities Make in Parking Ticket Revenue Per Capita.¡± TopView Sightseeing, 2018, www.topviewnyc.com/packages/how-much-25-major-cities-make-in-parking-ticket-revenue-per-capita.
+
+ 
+
+
+
+
+ 
+
+
+
+ 
